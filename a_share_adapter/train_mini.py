@@ -233,13 +233,15 @@ def eval_predictor_loss(tokenizer, model, val_loader):
     return total_loss / len(val_loader)
 
 
-def save_epoch_snapshot(model, save_dir, total_epoch, train_loss, val_loss):
-    """Unconditionally save this epoch's weights (no optimizer state) to its own folder,
-    so a later probe can pick the true-best epoch instead of trusting the training loss
+def save_epoch_snapshot(model, save_dir, total_epoch, train_loss, val_loss, opt, best_loss):
+    """Unconditionally save this epoch's weights + optimizer state to its own folder, so
+    (a) a later probe can pick the true-best epoch instead of trusting the training loss
     (which can diverge from actual reconstruction/prediction quality, e.g. BSQ entropy
-    regularization moving total loss down while MSE moves up)."""
+    regularization moving total loss down while MSE moves up), and (b) --resume-* can
+    restart from any completed epoch, not just the last one that improved best_loss."""
     epoch_dir = Path(save_dir) / "epochs" / f"epoch_{total_epoch}"
     model.save_pretrained(str(epoch_dir))
+    save_training_state(epoch_dir, opt, best_loss, total_epoch)
     (epoch_dir / "epoch_info.json").write_text(
         json.dumps({"epoch": total_epoch, "train_loss": train_loss, "val_loss": val_loss})
     )
@@ -299,11 +301,12 @@ def train_tokenizer(tokenizer, train_dataset, val_dataset, resume_from=None):
         print(f"  Epoch {epoch+1}: train loss={train_loss:.4f}  val loss={val_str}")
 
         total_epoch = prior_epochs + epoch + 1
-        save_epoch_snapshot(tokenizer, save_dir, total_epoch, train_loss, val_loss)
+        selection_loss = val_loss if val_loss is not None else train_loss
+        save_epoch_snapshot(tokenizer, save_dir, total_epoch, train_loss, val_loss, opt,
+                             min(best_loss, selection_loss))
         print(f"  Saved epoch snapshot to {save_dir}/epochs/epoch_{total_epoch}")
 
         # Save best (by val loss when available, else train loss)
-        selection_loss = val_loss if val_loss is not None else train_loss
         if selection_loss < best_loss:
             best_loss = selection_loss
             ckpt_path = save_dir / "best_model"
@@ -380,10 +383,11 @@ def train_predictor(tokenizer, model, train_dataset, val_dataset, resume_from=No
         print(f"  Epoch {epoch+1}: train loss={train_loss:.4f}  val loss={val_str}")
 
         total_epoch = prior_epochs + epoch + 1
-        save_epoch_snapshot(model, save_dir, total_epoch, train_loss, val_loss)
+        selection_loss = val_loss if val_loss is not None else train_loss
+        save_epoch_snapshot(model, save_dir, total_epoch, train_loss, val_loss, opt,
+                             min(best_loss, selection_loss))
         print(f"  Saved epoch snapshot to {save_dir}/epochs/epoch_{total_epoch}")
 
-        selection_loss = val_loss if val_loss is not None else train_loss
         if selection_loss < best_loss:
             best_loss = selection_loss
             ckpt_path = save_dir / "best_model"
