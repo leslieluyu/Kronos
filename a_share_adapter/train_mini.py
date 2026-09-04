@@ -411,11 +411,14 @@ def main():
                          "Continues training/best_loss/optimizer state instead of starting from the HF hub base model.")
     p.add_argument("--resume-predictor", type=str, default=None,
                     help="Local checkpoint dir to resume predictor from (e.g. outputs/mini_finetune/predictor_checkpoints/best_model).")
+    p.add_argument("--output-dir", type=str, default=config.output_dir,
+                    help="Directory to write checkpoints/final model to (default: %(default)s).")
     args = p.parse_args()
 
     config.epochs = args.epochs
     config.max_stocks = args.max_stocks
     config.batch_size = args.batch_size
+    config.output_dir = args.output_dir
 
     print(f"{'='*60}")
     print(f"Kronos-mini Fine-Tuning on A-Share Data")
